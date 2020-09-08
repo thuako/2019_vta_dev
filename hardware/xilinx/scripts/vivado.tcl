@@ -16,7 +16,7 @@
 # under the License.
 
 # Check if script is running in correct Vivado version.
-set scripts_vivado_version 2018.3
+set scripts_vivado_version 2019.2
 set current_vivado_version [version -short]
 
 if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
@@ -28,6 +28,7 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 
 # Parse argument list, derive the clock to utilize
 if { [llength $argv] eq 2 } {
+  # set ip_path "~/project/tvm/3rdparty/vta-hw/build/hardware/xilinx/hls/pynq_1x16_i8w8a32_15_15_18_17"
   set ip_path     [lindex $argv 0]
   set vta_config  [lindex $argv 1]
 } else {
@@ -36,31 +37,31 @@ if { [llength $argv] eq 2 } {
 }
 
 # Get the VTA configuration paramters
-set target            [exec python $vta_config --target]
-set device_family     [exec python $vta_config --get-fpga-family]
-set clock_freq        [exec python $vta_config --get-fpga-freq]
+set target "pynq"
+set device_family "zynq-7000"
+set clock_freq 100
 
 # SRAM dimensions
-set inp_part          [exec python $vta_config --get-inp-mem-banks]
-set inp_mem_width     [exec python $vta_config --get-inp-mem-width]
-set inp_mem_depth     [exec python $vta_config --get-inp-mem-depth]
-set wgt_part          [exec python $vta_config --get-wgt-mem-banks]
-set wgt_mem_width     [exec python $vta_config --get-wgt-mem-width]
-set wgt_mem_depth     [exec python $vta_config --get-wgt-mem-depth]
-set out_part          [exec python $vta_config --get-out-mem-banks]
-set out_mem_width     [exec python $vta_config --get-out-mem-width]
-set out_mem_depth     [exec python $vta_config --get-out-mem-depth]
+set inp_part 1
+set inp_mem_width 128
+set inp_mem_depth 2048
+set wgt_part 2
+set wgt_mem_width 1024
+set wgt_mem_depth 1024
+set out_part 1
+set out_mem_width 128
+set out_mem_depth 2048
 
 # AXI bus signals
-set axi_cache         [exec python $vta_config --get-axi-cache-bits]
-set axi_prot          [exec python $vta_config --get-axi-prot-bits]
+set axi_cache 1111
+set axi_prot 000
 
 # Address map
-set ip_reg_map_range  [exec python $vta_config --get-ip-reg-map-range]
-set fetch_base_addr   [exec python $vta_config --get-fetch-base-addr]
-set load_base_addr    [exec python $vta_config --get-load-base-addr]
-set compute_base_addr [exec python $vta_config --get-compute-base-addr]
-set store_base_addr   [exec python $vta_config --get-store-base-addr]
+set ip_reg_map_range 0x1000
+set fetch_base_addr 0x43C00000
+set load_base_addr 0x43C01000
+set compute_base_addr 0x43C02000
+set store_base_addr 0x43C03000
 
 # Paths to IP library of VTA modules
 set proj_name vta
@@ -73,7 +74,7 @@ set compute_ip "${ip_path}/vta_compute/soln/impl/ip/xilinx_com_hls_compute_1_0.z
 set store_ip "${ip_path}/vta_store/soln/impl/ip/xilinx_com_hls_store_1_0.zip"
 
 # Create custom project
-set device [exec python $vta_config --get-fpga-dev]
+set device "xc7z020clg484-1"
 create_project -force $proj_name $proj_path -part $device
 
 # Update IP repository with generated IP
@@ -111,6 +112,7 @@ proc init_fifo_property {fifo width_bytes depth} {
 # Procedure to initialize BRAM
 proc init_bram_property {bram width depth} {
   set_property -dict [ list \
+    CONFIG.use_bram_block {Stand_Alone} \
     CONFIG.Assume_Synchronous_Clk {true} \
     CONFIG.Byte_Size {8} \
     CONFIG.Enable_32bit_Address {true} \
@@ -206,32 +208,33 @@ foreach dep_queue $dep_queue_list {
 }
 
 # Create and connect inp_mem partitions
-for {set i 0} {$i < $inp_part} {incr i} {
-  # Create instance: inp_mem, and set properties
-  set inp_mem [ create_bd_cell -type ip -vlnv xilinx.com:ip:blk_mem_gen:8.4 inp_mem_${i} ]
-  [ init_bram_property $inp_mem $inp_mem_width $inp_mem_depth ]
-  # If module has more than 1 mem port, the naming convention changes
-  if {$inp_part > 1} {
-    set porta [get_bd_intf_pins load_0/inp_mem_${i}_V_PORTA]
-    set portb [get_bd_intf_pins compute_0/inp_mem_${i}_V_PORTA]
-  } else {
-    set porta [get_bd_intf_pins load_0/inp_mem_V_PORTA]
-    set portb [get_bd_intf_pins compute_0/inp_mem_V_PORTA]
+  for {set i 0} {$i < $inp_part} {incr i} {
+   # Create instance: inp_mem, and set properties
+    set inp_mem [ create_bd_cell -type ip -vlnv xilinx.com:ip:blk_mem_gen:8.4 inp_mem_${i} ]
+    [ init_bram_property $inp_mem 128 2048 ]
+    # If module has more than 1 mem port, the naming convention changes
+    if {$inp_part > 1} {
+      set porta [get_bd_intf_pins load_0/inp_mem_${i}_V_PORTA]
+      set portb [get_bd_intf_pins compute_0/inp_mem_${i}_V_PORTA]
+    } else {
+      set porta [get_bd_intf_pins load_0/inp_mem_V_PORTA]
+      set portb [get_bd_intf_pins compute_0/inp_mem_V_PORTA]
+    }
+    # Create interface connections
+    connect_bd_intf_net -intf_net load_0_inp_mem_V_PORTA \
+      [get_bd_intf_pins $inp_mem/BRAM_PORTA] \
+      $porta
+    connect_bd_intf_net -intf_net compute_0_inp_mem_V_PORTA \
+      [get_bd_intf_pins $inp_mem/BRAM_PORTB] \
+      $portb
   }
-  # Create interface connections
-  connect_bd_intf_net -intf_net load_0_inp_mem_V_PORTA \
-    [get_bd_intf_pins $inp_mem/BRAM_PORTA] \
-    $porta
-  connect_bd_intf_net -intf_net compute_0_inp_mem_V_PORTA \
-    [get_bd_intf_pins $inp_mem/BRAM_PORTB] \
-    $portb
-}
+
 
 # Create and connect wgt_mem partitions
 for {set i 0} {$i < $wgt_part} {incr i} {
   # Create instance: wgt_mem, and set properties
   set wgt_mem [ create_bd_cell -type ip -vlnv xilinx.com:ip:blk_mem_gen:8.4 wgt_mem_${i} ]
-  [ init_bram_property $wgt_mem $wgt_mem_width $wgt_mem_depth ]
+  [ init_bram_property $wgt_mem 1024 1024 ]
   # If module has more than 1 mem port, the naming convention changes
   if {$wgt_part > 1} {
     set porta [get_bd_intf_pins load_0/wgt_mem_${i}_V_PORTA]
@@ -248,6 +251,9 @@ for {set i 0} {$i < $wgt_part} {incr i} {
     [get_bd_intf_pins $wgt_mem/BRAM_PORTB] \
     $portb
 }
+
+
+
 
 # Create and connect out_mem partitions
 for {set i 0} {$i < $out_part} {incr i} {
@@ -412,8 +418,9 @@ save_bd_design
 ##################################################################
 # COMPILATION FLOW
 ##################################################################
-
+set_param logicopt.resynthNumProc 0
 # Create top-level wrapper file
+
 make_wrapper -files \
   [get_files $proj_path/$proj_name.srcs/sources_1/bd/$proj_name/$proj_name.bd] -top
 add_files -norecurse $proj_path/$proj_name.srcs/sources_1/bd/$proj_name/hdl/${proj_name}_wrapper.v
@@ -421,17 +428,19 @@ update_compile_order -fileset sources_1
 update_compile_order -fileset sim_1
 
 # Run bistream generation on 8 threads with performance oriented P&R strategy
-set num_threads 8
+set num_threads 4
 launch_runs impl_1 -to_step write_bitstream -jobs $num_threads
 wait_on_run impl_1
 
 # Export hardware description file and bitstream files to export/ dir
 if {[file exist $proj_path/$proj_name.runs/impl_1/${proj_name}_wrapper.bit]} {
+  write_hw_platform -fixed -unified -include_bit $proj_path/$proj_name.runs/impl_1/${proj_name}.xsa
   file mkdir $proj_path/export
-  file copy -force $proj_path/$proj_name.runs/impl_1/${proj_name}_wrapper.sysdef \
+  #file copy -force $proj_path/$proj_name.runs/impl_1/${proj_name}_wrapper.sysdef \
     $proj_path/export/vta.hdf
+  file copy -force $proj_path/$proj_name.runs/impl_1/${proj_name}.xsa \
+    $proj_path/export/vta.xsa
   file copy -force $proj_path/$proj_name.runs/impl_1/${proj_name}_wrapper.bit \
     $proj_path/export/vta.bit
 }
 
-exit

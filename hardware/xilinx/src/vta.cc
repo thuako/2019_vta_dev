@@ -28,6 +28,10 @@
 
 #include "vta.h"
 
+void rtl_model(inp_T  a0, inp_T  a1, inp_T  a2, inp_T  a3, 
+                wgt_T  b0, wgt_T  b1, wgt_T  b2, wgt_T  b3,
+                acc_T acc_in, acc_T & acc_out);
+
 template <typename DATA_T, int MAT_AXI_RATIO>
 void reset_mem(
   memop_sram_T &sram_idx,
@@ -263,7 +267,6 @@ void gemm(
 #pragma HLS PIPELINE II = 1
         // Read micro-op fields
         uop_T uop = uop_mem[upc];
-
         // Decode indices
         acc_idx_T dst_idx =
             uop.range(VTA_UOP_GEM_0_1, VTA_UOP_GEM_0_0) + dst_offset_in;
@@ -271,6 +274,7 @@ void gemm(
             uop.range(VTA_UOP_GEM_1_1, VTA_UOP_GEM_1_0) + src_offset_in;
         wgt_idx_T wgt_idx =
             uop.range(VTA_UOP_GEM_2_1, VTA_UOP_GEM_2_0) + wgt_offset_in;
+
 
         // Read in weight tensor
         wgt_T w_tensor[VTA_BLOCK_OUT][VTA_BLOCK_IN];
@@ -285,7 +289,9 @@ void gemm(
         out_T o_tensor[VTA_BATCH][VTA_BLOCK_OUT];
 
         // Inner GEMM loop
-        for (int b = 0; b < VTA_BATCH; b++) {
+        /*
+       for (int b = 0; b < VTA_BATCH; b++) {
+        // #pragma HLS unroll
           for (int oc = 0; oc < VTA_BLOCK_OUT; oc++) {
             // Initialize the accumulator values
             acc_T accum = a_tensor[b][oc];
@@ -295,15 +301,92 @@ void gemm(
             for (int ic = 0; ic < VTA_BLOCK_IN; ic++) {
               wgt_T w_elem = w_tensor[oc][ic];
               inp_T i_elem = i_tensor[b][ic];
-              mul_T prod_dsp = i_elem * w_elem;
-              tmp += (sum_T) prod_dsp;
+              rtl_model(i_elem, w_elem, tmp);
             }
             // Update summation
             accum += (acc_T) tmp;
             // Write back result acc_mem
             a_tensor[b][oc] = insn.reset_reg ? (acc_T) 0 : accum;
-            // And output vector
             o_tensor[b][oc] = (out_T) accum.range(VTA_OUT_WIDTH - 1, 0);
+          */
+        for (int b = 0; b < VTA_BATCH; b++) {
+          for (int oc = 0; oc < VTA_BLOCK_OUT / 4; oc++) {
+            // Initialize the accumulator values
+            acc_T accum_0 = a_tensor[b][0];
+            acc_T accum_1 = a_tensor[b][1];
+            acc_T accum_2 = a_tensor[b][2];
+            acc_T accum_3 = a_tensor[b][3];
+            // Dot product sum
+            acc_T tmp_0 = 0;
+            acc_T tmp_1 = 0;
+            acc_T tmp_2 = 0;
+            acc_T tmp_3 = 0;
+            // Inner matrix multiplication loop (input channel/feature)
+          
+            wgt_T w_elem_0_0 = w_tensor[0][0];
+            wgt_T w_elem_0_1 = w_tensor[0][1];
+            wgt_T w_elem_0_2 = w_tensor[0][2];
+            wgt_T w_elem_0_3 = w_tensor[0][3];
+            
+            wgt_T w_elem_1_0 = w_tensor[1][0];
+            wgt_T w_elem_1_1 = w_tensor[1][1];
+            wgt_T w_elem_1_2 = w_tensor[1][2];
+            wgt_T w_elem_1_3 = w_tensor[1][3];
+
+            wgt_T w_elem_2_0 = w_tensor[2][0];
+            wgt_T w_elem_2_1 = w_tensor[2][1];
+            wgt_T w_elem_2_2 = w_tensor[2][2];
+            wgt_T w_elem_2_3 = w_tensor[2][3];
+            
+            wgt_T w_elem_3_0 = w_tensor[3][0];
+            wgt_T w_elem_3_1 = w_tensor[3][1];
+            wgt_T w_elem_3_2 = w_tensor[3][2];
+            wgt_T w_elem_3_3 = w_tensor[3][3];
+            
+            
+            
+            inp_T i_elem_0 = i_tensor[b][0];
+            inp_T i_elem_1 = i_tensor[b][1];
+            inp_T i_elem_2 = i_tensor[b][2];
+            inp_T i_elem_3 = i_tensor[b][3];
+
+
+            rtl_model(i_elem_0, i_elem_1,i_elem_2,i_elem_3, 
+            w_elem_0_0, w_elem_0_1, w_elem_0_2, w_elem_0_3, 
+            accum_0, tmp_0);
+            
+            rtl_model(i_elem_0, i_elem_1,i_elem_2,i_elem_3, 
+            w_elem_1_0,w_elem_1_1,w_elem_1_2,w_elem_1_3, 
+            accum_1, tmp_1);
+            
+            rtl_model(i_elem_0, i_elem_1,i_elem_2,i_elem_3, 
+            w_elem_2_0,w_elem_2_1,w_elem_2_2,w_elem_2_3, 
+            accum_2, tmp_2);
+            
+            rtl_model(i_elem_0, i_elem_1,i_elem_2,i_elem_3, 
+            w_elem_3_0,w_elem_3_1,w_elem_3_2,w_elem_3_3, 
+            accum_3, tmp_3);
+            
+            
+            
+            // Write back result acc_mem
+            if(insn.reset_reg){
+              a_tensor[b][0] = 0;
+              a_tensor[b][1] = 0;
+              a_tensor[b][2] = 0;
+              a_tensor[b][3] = 0;
+            }
+            else{
+              a_tensor[b][0] = tmp_0;
+              a_tensor[b][1] = tmp_1;
+              a_tensor[b][2] = tmp_2;
+              a_tensor[b][3] = tmp_3;
+            }
+            // And output vector
+            o_tensor[b][0] = (out_T) accum_0.range(VTA_OUT_WIDTH - 1, 0);
+            o_tensor[b][1] = (out_T) accum_1.range(VTA_OUT_WIDTH - 1, 0);
+            o_tensor[b][2] = (out_T) accum_2.range(VTA_OUT_WIDTH - 1, 0);
+            o_tensor[b][3] = (out_T) accum_3.range(VTA_OUT_WIDTH - 1, 0);
           }
         }
 
@@ -369,6 +452,7 @@ void alu(
 
         // Perform ALU op over matrix elements
         for (int i = 0; i < VTA_BATCH; i++) {
+        //  #pragma HLS unroll
           for (int b = 0; b < VTA_BLOCK_OUT; b++) {
             // Read in operands
             acc_T src_0 = dst_tensor[i][b];
@@ -740,3 +824,58 @@ void vta(
 
   assert(l2g_count == 0 && s2g_count == 0 && g2l_count == 0 && g2s_count == 0);
 }
+
+
+/*
+for (int b = 0; b < VTA_BATCH; b++) {
+          for (int oc = 0; oc < VTA_BLOCK_OUT / 4; oc++) {
+            // Initialize the accumulator values
+            acc_T accum_0 = a_tensor[b][oc*4];
+            acc_T accum_1 = a_tensor[b][oc*4+1];
+            acc_T accum_2 = a_tensor[b][oc*4+2];
+            acc_T accum_3 = a_tensor[b][oc*4+3];
+            // Dot product sum
+            acc_T tmp_0 = 0;
+            acc_T tmp_1 = 0;
+            acc_T tmp_2 = 0;
+            acc_T tmp_3 = 0;
+            // Inner matrix multiplication loop (input channel/feature)
+            for (int ic = 0; ic < VTA_BLOCK_IN; ic++) {
+              wgt_T w_elem_0 = w_tensor[oc*4][ic];
+              wgt_T w_elem_1 = w_tensor[oc*4+1][ic];
+              wgt_T w_elem_2 = w_tensor[oc*4+2][ic];
+              wgt_T w_elem_3 = w_tensor[oc*4+3][ic];
+              inp_T i_elem = i_tensor[b][ic];
+
+              rtl_model(i_elem, w_elem_0, tmp_0);
+              rtl_model(i_elem, w_elem_1, tmp_1);
+              rtl_model(i_elem, w_elem_2, tmp_2);
+              rtl_model(i_elem, w_elem_3, tmp_3);
+            }
+            // Update summation
+            accum_0 += (acc_T) tmp_0;
+            accum_1 += (acc_T) tmp_1;
+            accum_2 += (acc_T) tmp_2;
+            accum_3 += (acc_T) tmp_3;
+            // Write back result acc_mem
+            if(insn.reset_reg){
+              a_tensor[b][oc*4] = 0;
+              a_tensor[b][oc*4+1] = 0;
+              a_tensor[b][oc*4+2] = 0;
+              a_tensor[b][oc*4+3] = 0;
+            }
+            else{
+              a_tensor[b][oc*4] = accum_0;
+              a_tensor[b][oc*4+1] = accum_1;
+              a_tensor[b][oc*4+2] = accum_2;
+              a_tensor[b][oc*4+3] = accum_3;
+            }
+            // And output vector
+            o_tensor[b][oc*4] = (out_T) accum_0.range(VTA_OUT_WIDTH - 1, 0);
+            o_tensor[b][oc*4+1] = (out_T) accum_1.range(VTA_OUT_WIDTH - 1, 0);
+            o_tensor[b][oc*4+2] = (out_T) accum_2.range(VTA_OUT_WIDTH - 1, 0);
+            o_tensor[b][oc*4+3] = (out_T) accum_3.range(VTA_OUT_WIDTH - 1, 0);
+          }
+        }
+
+*/

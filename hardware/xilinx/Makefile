@@ -59,7 +59,7 @@ $(BIT_PATH): $(IP_PATH)
 	mkdir -p $(HW_BUILD_PATH)
 	cd $(HW_BUILD_PATH) && \
 		$(VIVADO) \
-		-mode tcl \
+		-mode gui \
 		-source $(SCRIPT_DIR)/vivado.tcl \
 		-tclargs \
 			$(BUILD_DIR)/hls/$(CONF) \

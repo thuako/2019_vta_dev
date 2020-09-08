@@ -230,4 +230,9 @@ void vta(
   volatile bus_T *biases,
   volatile bus_T *outputs);
 
+
+// void rtl_model(inp_T  a, wgt_T  b, sum_T &rst);
+
+
+
 #endif  // VTA_VTA_H_
